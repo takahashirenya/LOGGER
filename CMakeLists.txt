@@ -35,7 +35,10 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(LOGGER LOGGER.c )
+add_executable(LOGGER 
+    LOGGER.c
+    lib/sdcard/sdcard.c
+)
 
 pico_set_program_name(LOGGER "LOGGER")
 pico_set_program_version(LOGGER "0.1")
@@ -51,6 +54,7 @@ target_link_libraries(LOGGER
 # Add the standard include files to the build
 target_include_directories(LOGGER PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib/sdcard
 )
 
 # Add any user requested libraries
