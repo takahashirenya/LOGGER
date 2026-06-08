@@ -33,11 +33,13 @@ project(LOGGER C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+# Add subdirectories
+add_subdirectory(lib/sdcard)
+
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(LOGGER 
     LOGGER.c
-    lib/sdcard/sdcard.c
 )
 
 pico_set_program_name(LOGGER "LOGGER")
@@ -49,19 +51,19 @@ pico_enable_stdio_usb(LOGGER 1)
 
 # Add the standard library to the build
 target_link_libraries(LOGGER
-        pico_stdlib)
+        pico_stdlib
+        sdcard)
 
 # Add the standard include files to the build
 target_include_directories(LOGGER PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
-        ${CMAKE_CURRENT_LIST_DIR}/lib/sdcard
 )
 
 # Add any user requested libraries
 target_link_libraries(LOGGER 
         hardware_spi
         hardware_i2c
-        )
+)
 
 pico_add_extra_outputs(LOGGER)
 
