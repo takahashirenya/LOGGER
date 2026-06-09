@@ -35,35 +35,64 @@ pico_sdk_init()
 
 # Add subdirectories
 add_subdirectory(lib/sdcard)
+add_subdirectory(lib/bme280)
+add_subdirectory(lib/bmp581)
+add_subdirectory(lib/bno08x)
+add_subdirectory(lib/mcp2515)
+add_subdirectory(lib/SDP610)
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(LOGGER 
+add_executable(LOGGER
     LOGGER.c
+)
+
+add_executable(pitot_tube
+    pitot_tube.c
 )
 
 pico_set_program_name(LOGGER "LOGGER")
 pico_set_program_version(LOGGER "0.1")
+pico_set_program_name(pitot_tube "pitot_tube")
+pico_set_program_version(pitot_tube "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(LOGGER 0)
 pico_enable_stdio_usb(LOGGER 1)
+pico_enable_stdio_uart(pitot_tube 0)
+pico_enable_stdio_usb(pitot_tube 1)
 
 # Add the standard library to the build
 target_link_libraries(LOGGER
         pico_stdlib
-        sdcard)
+        sdcard
+        bme280
+        bmp581
+        bno08x
+        mcp2515)
+
+target_link_libraries(pitot_tube
+        pico_stdlib
+        sdcard
+        SDP610
+        hardware_spi
+        hardware_i2c)
 
 # Add the standard include files to the build
 target_include_directories(LOGGER PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
+target_include_directories(pitot_tube PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+)
+
 # Add any user requested libraries
-target_link_libraries(LOGGER 
+target_link_libraries(LOGGER
         hardware_spi
         hardware_i2c
 )
 
 pico_add_extra_outputs(LOGGER)
+pico_add_extra_outputs(pitot_tube)
 

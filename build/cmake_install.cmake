@@ -40,6 +40,12 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/sdcard/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bme280/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bmp581/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/cmake_install.cmake")
+  include("C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/cmake_install.cmake")
 
 endif()
 

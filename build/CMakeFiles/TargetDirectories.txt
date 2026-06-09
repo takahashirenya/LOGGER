@@ -1,4 +1,5 @@
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/LOGGER.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/pitot_tube.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/edit_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/rebuild_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/CMakeFiles/edit_cache.dir
@@ -210,3 +211,21 @@ C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/src/rp2_common/pico_stdlib/CM
 C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/src/rp2_common/pico_stdlib/CMakeFiles/rebuild_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/docs/CMakeFiles/edit_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/docs/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/sdcard/CMakeFiles/sdcard.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/sdcard/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/sdcard/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bme280/CMakeFiles/bme280.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bme280/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bme280/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bmp581/CMakeFiles/bmp581.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bmp581/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bmp581/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/bno08x.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/mcp2515.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/rebuild_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/SDP610.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/edit_cache.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/rebuild_cache.dir
