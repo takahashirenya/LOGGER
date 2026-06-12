@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include "hardware/spi.h"
+#include "ff.h"
 
 // SD Card Command Timeout
 #define CMD_TIMEOUT 100
@@ -34,8 +34,9 @@ typedef struct {
 
 typedef struct {
     BlockDev block_dev;
+    FATFS fs;
     char filename_prefix[256];
-    FILE *file;
+    FIL file;
     char filepath[512];
     bool file_open;
     bool initialized;
@@ -46,7 +47,7 @@ typedef struct {
 BlockDev *block_dev_init(spi_inst_t *spi, uint cs_pin, uint32_t gbyte);
 void block_dev_deinit(BlockDev *bd);
 int block_dev_readblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf);
-int block_dev_writeblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf);
+int block_dev_writeblocks(BlockDev *bd, uint32_t block_num, const uint8_t *buf);
 
 SDCardLogger *sdcard_init(spi_inst_t *spi, uint cs_pin, uint32_t gbyte, const char *filename_prefix);
 void sdcard_deinit(SDCardLogger *logger);

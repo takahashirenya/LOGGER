@@ -12,10 +12,10 @@
 
 // SPI Defines (SD Card)
 #define SPI_PORT spi0
-#define PIN_MISO 16
-#define PIN_MOSI 19
-#define PIN_SCK  18
-#define PIN_CS   21
+#define PIN_MISO 4
+#define PIN_MOSI 7
+#define PIN_SCK  6
+#define PIN_CS   5
 
 // I2C0 Defines (BMP581, BNO08x)
 #define I2C0_PORT i2c0
@@ -35,12 +35,6 @@
 #define CAN_CS_PIN      9
 #define CAN_INT_PIN     8
 
-// UART defines
-#define UART_ID uart1
-#define BAUD_RATE 115200
-#define UART_TX_PIN 4
-#define UART_RX_PIN 5
-
 
 
 int main()
@@ -54,7 +48,8 @@ int main()
     printf("BOOT OK\r\n");
 
     // ========== SPI0 Initialization (SD Card) ==========
-    spi_init(SPI_PORT, 8000*1000);
+    spi_init(SPI_PORT, 100*1000);
+    spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
     gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
@@ -75,12 +70,6 @@ int main()
     gpio_set_function(I2C1_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C1_SDA);
     gpio_pull_up(I2C1_SCL);
-
-    // ========== UART Initialization ==========
-    uart_init(UART_ID, BAUD_RATE);
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-    uart_puts(UART_ID, "LOGGER initialized\r\n");
 
     // ========== BME280 Initialization ==========
     printf("Initializing BME280...\r\n");
@@ -153,13 +142,22 @@ int main()
 
     // ========== SD Card Logger Initialization ==========
     printf("Initializing SD card...\r\n");
-    SDCardLogger *logger = sdcard_init(SPI_PORT, PIN_CS, 1, "log_");
+    SDCardLogger *logger = sdcard_init(SPI_PORT, PIN_CS, 16, "log_");
     
     if (!logger || !logger->initialized) {
         printf("Failed to initialize SD card\r\n");
     } else {
         printf("Creating log file...\r\n");
         sdcard_make_file(logger);
+        sdcard_write(logger,
+                     "timestamp_ms,loop,bme280_ok,bme280_temp_c,bme280_humidity_percent,bme280_pressure_hpa,"
+                     "bmp581_ok,bmp581_temp_c,bmp581_pressure_pa,"
+                     "accel_ok,accel_x_mps2,accel_y_mps2,accel_z_mps2,"
+                     "linear_accel_ok,linear_accel_x_mps2,linear_accel_y_mps2,linear_accel_z_mps2,"
+                     "gyro_ok,gyro_x_rps,gyro_y_rps,gyro_z_rps,"
+                     "quat_ok,quat_w,quat_x,quat_y,quat_z,"
+                     "euler_roll_deg,euler_pitch_deg,euler_yaw_deg,"
+                     "can_tx_count,can_tx_status");
         printf("SD card OK\r\n");
     }
 
@@ -180,8 +178,11 @@ int main()
         printf("===== Loop %d =====\r\n", loop_count);
 
         // ========== BME280 Read ==========
-        float bme_temp, bme_hum, bme_press;
-        if (bme280_main(&bme, &bme_temp, &bme_hum, &bme_press)) {
+        float bme_temp = 0.0f;
+        float bme_hum = 0.0f;
+        float bme_press = 0.0f;
+        bool ok_bme = bme280_main(&bme, &bme_temp, &bme_hum, &bme_press);
+        if (ok_bme) {
             printf("BME280: Temp=%.2f C, Hum=%.2f %%, Press=%.2f hPa\r\n",
                    bme_temp, bme_hum, bme_press);
         } else {
@@ -189,18 +190,32 @@ int main()
         }
 
         // ========== BMP581 Read ==========
-        float bmp_temp, bmp_press;
-        if (bmp581_main(&bmp, &bmp_temp, &bmp_press)) {
+        float bmp_temp = 0.0f;
+        float bmp_press = 0.0f;
+        bool ok_bmp = bmp581_main(&bmp, &bmp_temp, &bmp_press);
+        if (ok_bmp) {
             printf("BMP581: Temp=%.2f C, Press=%.2f Pa\r\n", bmp_temp, bmp_press);
         } else {
             printf("BMP581: read error\r\n");
         }
 
         // ========== BNO08x Read ==========
-        float ax, ay, az;
-        float lax, lay, laz;
-        float gx, gy, gz;
-        float w, x, y, z;
+        float ax = 0.0f;
+        float ay = 0.0f;
+        float az = 0.0f;
+        float lax = 0.0f;
+        float lay = 0.0f;
+        float laz = 0.0f;
+        float gx = 0.0f;
+        float gy = 0.0f;
+        float gz = 0.0f;
+        float w = 0.0f;
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        float roll_deg = 0.0f;
+        float pitch_deg = 0.0f;
+        float yaw_deg = 0.0f;
 
         bool ok_acc = bno08x_read_accel(&ax, &ay, &az);
         bool ok_lacc = bno08x_read_linear_accel(&lax, &lay, &laz);
@@ -221,6 +236,9 @@ int main()
             bno08x_quat_t q_now = { .w = w, .x = x, .y = y, .z = z };
             bno08x_quat_t q_corr = bno08x_apply_reference(init_q, q_now);
             bno08x_euler_t e = bno08x_quat_to_euler_deg(q_corr);
+            roll_deg = e.roll_deg;
+            pitch_deg = e.pitch_deg;
+            yaw_deg = e.yaw_deg;
             printf("BNO08x EULER: R=%.2f P=%.2f Y=%.2f\r\n", e.roll_deg, e.pitch_deg, e.yaw_deg);
         }
 
@@ -260,10 +278,21 @@ int main()
 
         // ========== SD Card Log ==========
         if (logger && logger->initialized) {
-            char log_buffer[256];
+            char log_buffer[512];
             snprintf(log_buffer, sizeof(log_buffer),
-                     "Loop:%d BME280(T:%.2f H:%.2f P:%.2f) BMP581(T:%.2f P:%.2f) BNO08x(A:%.1f %.1f %.1f)\r\n",
-                     loop_count, bme_temp, bme_hum, bme_press, bmp_temp, bmp_press, ax, ay, az);
+                     "%lu,%d,%d,%.2f,%.2f,%.2f,%d,%.2f,%.2f,%d,%.3f,%.3f,%.3f,"
+                     "%d,%.3f,%.3f,%.3f,%d,%.3f,%.3f,%.3f,%d,%.5f,%.5f,%.5f,%.5f,"
+                     "%.2f,%.2f,%.2f,%d,%d",
+                     (unsigned long)to_ms_since_boot(get_absolute_time()),
+                     loop_count,
+                     ok_bme, bme_temp, bme_hum, bme_press,
+                     ok_bmp, bmp_temp, bmp_press,
+                     ok_acc, ax, ay, az,
+                     ok_lacc, lax, lay, laz,
+                     ok_gyro, gx, gy, gz,
+                     ok_quat, w, x, y, z,
+                     roll_deg, pitch_deg, yaw_deg,
+                     can_tx_count, tx_err);
             sdcard_write(logger, log_buffer);
         }
 

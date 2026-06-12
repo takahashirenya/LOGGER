@@ -4,10 +4,19 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "diskio.h"
 
-// Manual SPI initialization (128 clock cycles with CS low)
+#define SDCARD_DRIVE "0:"
+#define SD_INIT_BAUDRATE 100000
+#define SD_DATA_BAUDRATE 1000000
+#define DATA_TOKEN_TIMEOUT_MS 500
+#define WRITE_BUSY_TIMEOUT_MS 1000
+
+static BlockDev *active_block_dev = NULL;
+
+// Send idle clocks with CS high so the card enters SPI mode before CMD0.
 static void manual_spi_init(spi_inst_t *spi, uint cs_pin) {
-    gpio_put(cs_pin, 0);  // CS LOW
+    gpio_put(cs_pin, 1);  // CS HIGH
     sleep_us(10);
     
     for (int i = 0; i < 16; i++) {
@@ -15,13 +24,18 @@ static void manual_spi_init(spi_inst_t *spi, uint cs_pin) {
         spi_write_blocking(spi, &dummy, 1);
     }
     
-    gpio_put(cs_pin, 1);  // CS HIGH
     sleep_ms(1);
 }
 
 // Initialize SPI with specified baudrate
 static void init_spi(spi_inst_t *spi, uint baudrate) {
     spi_set_baudrate(spi, baudrate);
+}
+
+static void sd_release(BlockDev *bd) {
+    uint8_t dummy = 0xFF;
+    gpio_put(bd->cs_pin, 1);  // CS HIGH
+    spi_write_blocking(bd->spi, &dummy, 1);
 }
 
 // Send command to SD card and get response
@@ -57,18 +71,14 @@ static int8_t sd_cmd(BlockDev *bd, uint8_t cmd, uint32_t arg, uint8_t crc,
             }
             
             if (release) {
-                uint8_t dummy = 0xFF;
-                spi_write_blocking(bd->spi, &dummy, 1);
+                sd_release(bd);
             }
-            gpio_put(bd->cs_pin, 1);  // CS HIGH
             return response;
         }
     }
     
     // Timeout
-    uint8_t dummy = 0xFF;
-    spi_write_blocking(bd->spi, &dummy, 1);
-    gpio_put(bd->cs_pin, 1);  // CS HIGH
+    sd_release(bd);
     return -1;
 }
 
@@ -87,24 +97,32 @@ static bool init_card_v1(BlockDev *bd) {
 
 // Initialize SD Card v2
 static bool init_card_v2(BlockDev *bd) {
+    int8_t last_cmd58 = -1;
+    int8_t last_cmd55 = -1;
+    int8_t last_acmd41 = -1;
+
     for (int i = 0; i < CMD_TIMEOUT; i++) {
         sleep_ms(50);
-        sd_cmd(bd, 58, 0, 0, 4, true, false);
-        sd_cmd(bd, 55, 0, 0, 0, true, false);
-        if (sd_cmd(bd, 41, 0x40000000, 0, 0, true, false) == 0) {
+        last_cmd58 = sd_cmd(bd, 58, 0, 0, 4, true, false);
+        last_cmd55 = sd_cmd(bd, 55, 0, 0, 0, true, false);
+        last_acmd41 = sd_cmd(bd, 41, 0x40000000, 0, 0, true, false);
+        if (last_acmd41 == 0) {
             sd_cmd(bd, 58, 0, 0, 4, true, false);
             bd->cdv = 1;
             printf("[SDCard] v2 card\n");
             return true;
         }
     }
+
+    printf("[SDCard] v2 timeout: CMD58=%d CMD55=%d ACMD41=%d\n",
+           last_cmd58, last_cmd55, last_acmd41);
     return false;
 }
 
 // Initialize SD Card
 static bool init_card(BlockDev *bd) {
+    init_spi(bd->spi, SD_INIT_BAUDRATE);  // Low baudrate for init
     manual_spi_init(bd->spi, bd->cs_pin);
-    init_spi(bd->spi, 100000);  // Low baudrate for init
     gpio_put(bd->cs_pin, 1);
     
     // CMD0: reset card
@@ -139,9 +157,10 @@ static bool init_card(BlockDev *bd) {
     }
     
     // Set high data rate
-    init_spi(bd->spi, 8000000);
+    init_spi(bd->spi, SD_DATA_BAUDRATE);
     
     // Clock card 100+ cycles with CS high
+    gpio_put(bd->cs_pin, 1);
     for (int i = 0; i < 16; i++) {
         uint8_t dummy = 0xFF;
         spi_write_blocking(bd->spi, &dummy, 1);
@@ -179,21 +198,36 @@ void block_dev_deinit(BlockDev *bd) {
     }
 }
 
-// Read blocks from SD card
+// Read one block from SD card
 int block_dev_readblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf) {
     if (!bd || !bd->initialized) return -1;
     
     // CMD17: read single block
     gpio_put(bd->cs_pin, 0);
-    sd_cmd(bd, 17, block_num * bd->cdv, 0, 0, false, false);
+    int8_t r = sd_cmd(bd, 17, block_num * bd->cdv, 0, 0, false, false);
+    if (r != 0) {
+        printf("[SDCard] CMD17 failed: block=%lu r=%d\n",
+               (unsigned long)block_num, r);
+        sd_release(bd);
+        return -1;
+    }
     
     // Wait for data token
-    for (int i = 0; i < CMD_TIMEOUT; i++) {
+    bool token_found = false;
+    absolute_time_t deadline = make_timeout_time_ms(DATA_TOKEN_TIMEOUT_MS);
+    do {
         uint8_t dummy = 0xFF;
         spi_read_blocking(bd->spi, dummy, bd->tokenbuf, 1);
         if (bd->tokenbuf[0] == TOKEN_DATA) {
+            token_found = true;
             break;
         }
+    } while (!time_reached(deadline));
+    if (!token_found) {
+        printf("[SDCard] read token timeout: block=%lu last=0x%02X\n",
+               (unsigned long)block_num, bd->tokenbuf[0]);
+        sd_release(bd);
+        return -1;
     }
     
     // Read data
@@ -204,17 +238,20 @@ int block_dev_readblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf) {
     spi_read_blocking(bd->spi, dummy, bd->tokenbuf, 1);
     spi_read_blocking(bd->spi, dummy, bd->tokenbuf, 1);
     
-    gpio_put(bd->cs_pin, 1);
+    sd_release(bd);
     return 0;
 }
 
-// Write blocks to SD card
-int block_dev_writeblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf) {
+// Write one block to SD card
+int block_dev_writeblocks(BlockDev *bd, uint32_t block_num, const uint8_t *buf) {
     if (!bd || !bd->initialized) return -1;
     
     // CMD24: write single block
     gpio_put(bd->cs_pin, 0);
-    sd_cmd(bd, 24, block_num * bd->cdv, 0, 0, true, false);
+    if (sd_cmd(bd, 24, block_num * bd->cdv, 0, 0, false, false) != 0) {
+        sd_release(bd);
+        return -1;
+    }
     
     // Send data token
     uint8_t token = TOKEN_DATA;
@@ -231,19 +268,95 @@ int block_dev_writeblocks(BlockDev *bd, uint32_t block_num, uint8_t *buf) {
     // Check response
     spi_read_blocking(bd->spi, 0xFF, bd->tokenbuf, 1);
     if ((bd->tokenbuf[0] & 0x1F) != 0x05) {
-        spi_write_blocking(bd->spi, &dummy, 1);
-        gpio_put(bd->cs_pin, 1);
+        sd_release(bd);
         return -1;
     }
     
     // Wait for write to finish
+    absolute_time_t deadline = make_timeout_time_ms(WRITE_BUSY_TIMEOUT_MS);
     do {
         spi_read_blocking(bd->spi, 0xFF, bd->tokenbuf, 1);
+        if (time_reached(deadline)) {
+            printf("[SDCard] write busy timeout: block=%lu\n",
+                   (unsigned long)block_num);
+            sd_release(bd);
+            return -1;
+        }
     } while (bd->tokenbuf[0] == 0);
     
-    spi_write_blocking(bd->spi, &dummy, 1);
-    gpio_put(bd->cs_pin, 1);
+    sd_release(bd);
     return 0;
+}
+
+DSTATUS disk_initialize(BYTE pdrv) {
+    if (pdrv != 0 || !active_block_dev || !active_block_dev->initialized) {
+        return STA_NOINIT;
+    }
+    return 0;
+}
+
+DSTATUS disk_status(BYTE pdrv) {
+    if (pdrv != 0 || !active_block_dev || !active_block_dev->initialized) {
+        return STA_NOINIT;
+    }
+    return 0;
+}
+
+DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
+    if (pdrv != 0 || !active_block_dev || !buff || count == 0) {
+        return RES_PARERR;
+    }
+
+    for (UINT i = 0; i < count; i++) {
+        if (block_dev_readblocks(active_block_dev, (uint32_t)(sector + i), buff + i * BLOCK_SIZE) != 0) {
+            return RES_ERROR;
+        }
+    }
+    return RES_OK;
+}
+
+DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
+    if (pdrv != 0 || !active_block_dev || !buff || count == 0) {
+        return RES_PARERR;
+    }
+
+    for (UINT i = 0; i < count; i++) {
+        if (block_dev_writeblocks(active_block_dev, (uint32_t)(sector + i), buff + i * BLOCK_SIZE) != 0) {
+            return RES_ERROR;
+        }
+    }
+    return RES_OK;
+}
+
+DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
+    if (pdrv != 0 || !active_block_dev) {
+        return RES_PARERR;
+    }
+
+    switch (cmd) {
+    case CTRL_SYNC:
+        return RES_OK;
+    case GET_SECTOR_COUNT:
+        if (!buff) {
+            return RES_PARERR;
+        }
+        *(LBA_t *)buff = active_block_dev->sectors;
+        return RES_OK;
+    case GET_SECTOR_SIZE:
+        if (!buff) {
+            return RES_PARERR;
+        }
+        *(WORD *)buff = BLOCK_SIZE;
+        return RES_OK;
+    case GET_BLOCK_SIZE:
+        if (!buff) {
+            return RES_PARERR;
+        }
+        *(DWORD *)buff = 1;
+        return RES_OK;
+    default:
+        return RES_PARERR;
+    }
 }
 
 // Initialize SD card logger
@@ -260,10 +373,22 @@ SDCardLogger *sdcard_init(spi_inst_t *spi, uint cs_pin, uint32_t gbyte, const ch
     
     logger->block_dev = *bd;
     free(bd);
+    active_block_dev = &logger->block_dev;
+
+    FRESULT fr = f_mount(&logger->fs, SDCARD_DRIVE, 1);
+    if (fr != FR_OK) {
+        printf("SDcard: mount failed: %d\n", fr);
+        if (fr == FR_NO_FILESYSTEM) {
+            printf("SDcard: no valid FAT volume. Format the card as FAT32, not exFAT.\n");
+        }
+        free(logger);
+        active_block_dev = NULL;
+        return NULL;
+    }
     
     strncpy(logger->filename_prefix, filename_prefix, sizeof(logger->filename_prefix) - 1);
     logger->filename_prefix[sizeof(logger->filename_prefix) - 1] = '\0';
-    logger->file = NULL;
+    memset(&logger->file, 0, sizeof(logger->file));
     logger->file_open = false;
     logger->initialized = true;
     logger->write_counter = 0;
@@ -274,9 +399,11 @@ SDCardLogger *sdcard_init(spi_inst_t *spi, uint cs_pin, uint32_t gbyte, const ch
 // Deinitialize SD card logger
 void sdcard_deinit(SDCardLogger *logger) {
     if (logger) {
-        if (logger->file) {
-            fclose(logger->file);
+        if (logger->file_open) {
+            f_close(&logger->file);
         }
+        f_mount(NULL, SDCARD_DRIVE, 0);
+        active_block_dev = NULL;
         free(logger);
     }
 }
@@ -289,20 +416,19 @@ void sdcard_make_file(SDCardLogger *logger) {
     }
     
     for (int i = 1; i < 100; i++) {
-        snprintf(logger->filepath, sizeof(logger->filepath), "/sd/log_%d.txt", i);
-        
-        logger->file = fopen(logger->filepath, "r");
-        if (logger->file) {
-            fclose(logger->file);
+        snprintf(logger->filepath, sizeof(logger->filepath), SDCARD_DRIVE "/%s%d.csv", logger->filename_prefix, i);
+
+        FRESULT fr = f_open(&logger->file, logger->filepath, FA_WRITE | FA_CREATE_NEW);
+        if (fr == FR_EXIST) {
             continue;
         }
-        
-        logger->file = fopen(logger->filepath, "w");
-        if (logger->file) {
+        if (fr == FR_OK) {
             printf("%s\n", logger->filepath);
             logger->file_open = true;
             return;
         }
+        printf("SDcard: f_open failed: %d\n", fr);
+        break;
     }
     
     printf("SDcard: Could not create file\n");
@@ -320,19 +446,27 @@ void sdcard_write(SDCardLogger *logger, const char *data) {
         return;
     }
     
-    if (fprintf(logger->file, "%s\n", data) < 0) {
-        printf("SDcard: Write error\n");
-        if (logger->file) {
-            fclose(logger->file);
-            logger->file = fopen(logger->filepath, "a");
+    UINT written = 0;
+    FRESULT fr = f_write(&logger->file, data, strlen(data), &written);
+    if (fr == FR_OK) {
+        fr = f_write(&logger->file, "\n", 1, &written);
+    }
+    if (fr != FR_OK) {
+        printf("SDcard: Write error: %d\n", fr);
+        f_close(&logger->file);
+        if (f_open(&logger->file, logger->filepath, FA_WRITE | FA_OPEN_APPEND) == FR_OK) {
+            logger->file_open = true;
+        } else {
+            logger->file_open = false;
         }
         return;
     }
     
-    // Flush every 10 writes
+    // Keep each logger loop on the card even if power is removed.
     logger->write_counter++;
-    if (logger->write_counter % 10 == 0) {
-        fflush(logger->file);
+    fr = f_sync(&logger->file);
+    if (fr != FR_OK) {
+        printf("SDcard: Sync error: %d\n", fr);
     }
 }
 

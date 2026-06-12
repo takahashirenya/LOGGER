@@ -63,7 +63,7 @@ int main()
     gpio_set_dir(PIN_CS, GPIO_OUT);
     gpio_put(PIN_CS, 1);
 
-    SDCardLogger *logger = sdcard_init(SPI_PORT, PIN_CS, 1, "log_");
+    SDCardLogger *logger = sdcard_init(SPI_PORT, PIN_CS, 16, "log_");
     if (!logger || !logger->initialized) {
         printf("SD card init failed\r\n");
     } else {
