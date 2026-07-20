@@ -442,8 +442,14 @@ void sdcard_write(SDCardLogger *logger, const char *data) {
     }
     
     if (!logger->file_open) {
-        printf("SDcard: File not open\n");
-        return;
+        FRESULT reopen_result = f_open(&logger->file, logger->filepath,
+                                       FA_WRITE | FA_OPEN_APPEND);
+        if (reopen_result != FR_OK) {
+            printf("SDcard: Reopen failed: %d\n", reopen_result);
+            return;
+        }
+        logger->file_open = true;
+        printf("SDcard: File reopened\n");
     }
     
     UINT written = 0;
@@ -467,6 +473,8 @@ void sdcard_write(SDCardLogger *logger, const char *data) {
     fr = f_sync(&logger->file);
     if (fr != FR_OK) {
         printf("SDcard: Sync error: %d\n", fr);
+        f_close(&logger->file);
+        logger->file_open = false;
     }
 }
 

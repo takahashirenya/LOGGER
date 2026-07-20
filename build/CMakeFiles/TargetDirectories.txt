@@ -1,5 +1,6 @@
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/LOGGER.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/pitot_tube.dir
+C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/speed_receiver.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/edit_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/CMakeFiles/rebuild_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/pico-sdk/CMakeFiles/edit_cache.dir
@@ -223,9 +224,6 @@ C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bmp581/CMakeFiles/rebuild_cache.di
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/bno08x.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/edit_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/bno08x/CMakeFiles/rebuild_cache.dir
-C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/mcp2515.dir
-C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/edit_cache.dir
-C:/Users/renya/pico_sdk_code/LOGGER/build/lib/mcp2515/CMakeFiles/rebuild_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/SDP610.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/edit_cache.dir
 C:/Users/renya/pico_sdk_code/LOGGER/build/lib/SDP610/CMakeFiles/rebuild_cache.dir

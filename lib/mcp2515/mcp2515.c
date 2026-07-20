@@ -279,10 +279,15 @@ mcp2515_error_t mcp2515_read_message(const mcp2515_t *dev, can_frame_t *frame) {
     frame->rtr = (hdr[MCP_DLC_INDEX] & RTR_MASK) != 0;
 
     if (frame->extended) {
-        return MCP2515_FAIL; // this sample keeps things standard-ID only
+        frame->id = ((uint32_t)hdr[MCP_SIDH_INDEX] << 21) |
+                    ((uint32_t)(hdr[MCP_SIDL_INDEX] & 0xE0) << 13) |
+                    ((uint32_t)(hdr[MCP_SIDL_INDEX] & 0x03) << 16) |
+                    ((uint32_t)hdr[MCP_EID8_INDEX] << 8) |
+                    hdr[MCP_EID0_INDEX];
+    } else {
+        frame->id = (uint32_t)((hdr[MCP_SIDH_INDEX] << 3) |
+                               (hdr[MCP_SIDL_INDEX] >> 5));
     }
-
-    frame->id = (uint32_t)((hdr[MCP_SIDH_INDEX] << 3) | (hdr[MCP_SIDL_INDEX] >> 5));
     frame->dlc = hdr[MCP_DLC_INDEX] & DLC_MASK;
     if (frame->dlc > MCP2515_MAX_DATA_LEN) {
         return MCP2515_FAIL;

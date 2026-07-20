@@ -38,7 +38,6 @@ add_subdirectory(lib/sdcard)
 add_subdirectory(lib/bme280)
 add_subdirectory(lib/bmp581)
 add_subdirectory(lib/bno08x)
-add_subdirectory(lib/mcp2515)
 add_subdirectory(lib/SDP610)
 
 # Add executable. Default name is the project name, version 0.1
@@ -51,16 +50,24 @@ add_executable(pitot_tube
     pitot_tube.c
 )
 
+add_executable(speed_receiver
+    speed_receiver.c
+)
+
 pico_set_program_name(LOGGER "LOGGER")
 pico_set_program_version(LOGGER "0.1")
 pico_set_program_name(pitot_tube "pitot_tube")
 pico_set_program_version(pitot_tube "0.1")
+pico_set_program_name(speed_receiver "speed_receiver")
+pico_set_program_version(speed_receiver "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(LOGGER 0)
 pico_enable_stdio_usb(LOGGER 1)
 pico_enable_stdio_uart(pitot_tube 0)
 pico_enable_stdio_usb(pitot_tube 1)
+pico_enable_stdio_uart(speed_receiver 0)
+pico_enable_stdio_usb(speed_receiver 1)
 
 # Add the standard library to the build
 target_link_libraries(LOGGER
@@ -69,7 +76,7 @@ target_link_libraries(LOGGER
         bme280
         bmp581
         bno08x
-        mcp2515)
+        SDP610)
 
 target_link_libraries(pitot_tube
         pico_stdlib
@@ -77,6 +84,10 @@ target_link_libraries(pitot_tube
         SDP610
         hardware_spi
         hardware_i2c)
+
+target_link_libraries(speed_receiver
+        pico_stdlib
+        hardware_spi)
 
 # Add the standard include files to the build
 target_include_directories(LOGGER PRIVATE
@@ -91,8 +102,12 @@ target_include_directories(pitot_tube PRIVATE
 target_link_libraries(LOGGER
         hardware_spi
         hardware_i2c
+        hardware_uart
+        hardware_watchdog
+        pico_multicore
 )
 
 pico_add_extra_outputs(LOGGER)
 pico_add_extra_outputs(pitot_tube)
+pico_add_extra_outputs(speed_receiver)
 
