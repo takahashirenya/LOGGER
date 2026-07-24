@@ -42,8 +42,8 @@
 #define AIRSPEED_FRAME_SIZE  8U
 #define PWM_FRAME_HEADER_1   0xA5U
 #define PWM_FRAME_HEADER_2   0x5AU
-#define PWM_DATA_SIZE        4U
-#define PWM_FRAME_SIZE       8U
+#define PWM_DATA_SIZE        5U
+#define PWM_FRAME_SIZE       9U
 
 #define SAMPLE_PERIOD_MS     20U
 #define STATUS_PERIOD_LOOPS  50
@@ -71,7 +71,9 @@
 
 #define SDP610_SENSOR_COUNT 3
 #define SDP610_INIT_TIMEOUT 100
-#define PITOT_TEMPERATURE_C 27.0f
+#define PITOT_CALIBRATION_TEMPERATURE_C 23.9f
+#define PITOT_CALIBRATION_KA 0.000259759f
+#define PITOT_CALIBRATION_OFFSET_MPS 0.140523f
 
 static const uint8_t sdp610_addresses[SDP610_SENSOR_COUNT] = {0x40, 0x44, 0x4F};
 
@@ -102,6 +104,7 @@ typedef struct {
     bool received;
     uint16_t lad_pwm_us;
     uint16_t ele_pwm_us;
+    uint8_t hatch_gear;
     uint32_t last_ms;
     uint32_t rx_count;
 } steering_pwm_data_t;
@@ -137,6 +140,7 @@ static void steering_pwm_uart_process(void)
                     (uint16_t)pwm_rx_frame[3] | ((uint16_t)pwm_rx_frame[4] << 8);
                 steering_pwm_latest.ele_pwm_us =
                     (uint16_t)pwm_rx_frame[5] | ((uint16_t)pwm_rx_frame[6] << 8);
+                steering_pwm_latest.hatch_gear = pwm_rx_frame[7];
                 steering_pwm_latest.last_ms = to_ms_since_boot(get_absolute_time());
                 steering_pwm_latest.rx_count++;
                 steering_pwm_latest.received = true;
@@ -377,9 +381,9 @@ static bool pitot_calculate_speed(int16_t raw, float *speed_mps)
         return true;
     }
 
-    const float pito_ka = 0.000385f;
-    const float pito_k = pito_ka * sqrtf((PITOT_TEMPERATURE_C + 273.15f) * 287.0f);
-    *speed_mps = pito_k * sqrtf((float)raw) + 0.822f;
+    const float pito_k = PITOT_CALIBRATION_KA *
+                         sqrtf((PITOT_CALIBRATION_TEMPERATURE_C + 273.15f) * 287.0f);
+    *speed_mps = pito_k * sqrtf((float)raw) + PITOT_CALIBRATION_OFFSET_MPS;
     return true;
 }
 
@@ -496,7 +500,7 @@ int main()
                      "uart_tx_count,uart_tx_status,log_drop_count,"
                      "airspeed_tx_mps,sample_processing_ms,"
                      "steering_pwm_received,steering_pwm_rx_count,steering_pwm_age_ms,"
-                     "lad_pwm_us,ele_pwm_us,"
+                     "lad_pwm_us,ele_pwm_us,hatch_gear,"
                      "gnss_received,gnss_checksum_ok,gnss_valid,gnss_age_ms,gnss_gnrmc");
         printf("SD card OK\r\n");
         sd_logger = logger;
@@ -698,9 +702,10 @@ int main()
                    gnss.received, gnss.checksum_ok, gnss.valid,
                    (unsigned long)gnss_age_ms,
                    gnss.valid ? gnss.rmc : "none");
-            printf("STEERING PWM: received=%d age=%lu ms lad=%u us ele=%u us\r\n",
+            printf("STEERING PWM: received=%d age=%lu ms lad=%u us ele=%u us hatch_gear=%u\r\n",
                    steering_pwm.received, (unsigned long)steering_pwm_age_ms,
-                   steering_pwm.lad_pwm_us, steering_pwm.ele_pwm_us);
+                   steering_pwm.lad_pwm_us, steering_pwm.ele_pwm_us,
+                   steering_pwm.hatch_gear);
         }
 
         // ========== SD Card Log ==========
@@ -712,7 +717,7 @@ int main()
                      "%lu,%d,%d,%.2f,%.2f,%.2f,%d,%.2f,%.2f,%d,%.3f,%.3f,%.3f,"
                      "%d,%.3f,%.3f,%.3f,%d,%.3f,%.3f,%.3f,%d,%.5f,%.5f,%.5f,%.5f,"
                      "%.2f,%.2f,%.2f,%d,%d,%d,%d,%d,%d,%d,%.3f,%d,%d,%lu,%.3f,%lu,"
-                     "%d,%lu,%lu,%u,%u,%d,%d,%d,%lu,%s",
+                     "%d,%lu,%lu,%u,%u,%u,%d,%d,%d,%lu,%s",
                      (unsigned long)to_ms_since_boot(get_absolute_time()),
                      loop_count,
                      ok_bme, bme_temp, bme_hum, bme_press,
@@ -729,6 +734,7 @@ int main()
                      steering_pwm.received, (unsigned long)steering_pwm.rx_count,
                      (unsigned long)steering_pwm_age_ms,
                      steering_pwm.lad_pwm_us, steering_pwm.ele_pwm_us,
+                     steering_pwm.hatch_gear,
                      gnss.received, gnss.checksum_ok, gnss.valid,
                      (unsigned long)gnss_age_ms,
                      gnss.valid ? gnss.rmc : "");
