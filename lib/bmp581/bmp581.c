@@ -3,8 +3,6 @@
 #include "hardware/i2c.h"
 #include <stdio.h>
 
-static inline bool i2c_ok(int rc) { return rc >= 0; }
-
 static bool bmp_read_reg(bmp581_t *dev, uint8_t reg, uint8_t *data, size_t n)
 {
     int rc = i2c_write_blocking(dev->i2c, dev->addr, &reg, 1, true);
@@ -23,7 +21,7 @@ static bool bmp_write_reg(bmp581_t *dev, uint8_t reg, const uint8_t *data, size_
     for (size_t i = 0; i < n; ++i)
         buf[1 + i] = data[i];
     int rc = i2c_write_blocking(dev->i2c, dev->addr, buf, 1 + n, false);
-    return i2c_ok(rc);
+    return rc == (int)(n + 1);
 }
 
 // ---- OSRsetting：osr_t(bit2-0), osr_p(bit5-3), press_en(bit6) ----
@@ -47,7 +45,24 @@ bool bmp581_set_odr_mode(bmp581_t *dev, uint8_t odr_code, uint8_t pwr_mode)
 // ---- initialization ----
 bool bmp581_init(bmp581_t *dev)
 {
+    const bmp581_config_t config = {
+        .osr_t = BMP581_OSR_T_4,
+        .osr_p = BMP581_OSR_P_4,
+        .odr_code = BMP581_ODR_CODE_100_299_HZ,
+        .pwr_mode = BMP581_PWR_MODE_NORMAL,
+    };
+    return bmp581_init_with_config(dev, &config);
+}
 
+bool bmp581_init_with_config(bmp581_t *dev, const bmp581_config_t *config)
+{
+    if (!dev || !config || config->osr_t > BMP581_OSR_T_128 ||
+        config->osr_p > BMP581_OSR_P_128 || config->odr_code > 0x1F ||
+        (config->pwr_mode != BMP581_PWR_MODE_NORMAL &&
+         config->pwr_mode != BMP581_PWR_MODE_CONTINUOUS))
+    {
+        return false;
+    }
     // check device
     uint8_t chip_id = 0;
     if (!bmp_read_reg(dev, BMP581_REG_CHIP_ID, &chip_id, 1))
@@ -90,20 +105,38 @@ bool bmp581_init(bmp581_t *dev)
         return false;
     }
 
-    // default setting
-    if (!bmp581_set_osr(dev, 0b010, 0b010, true))
+    // Configure OSR while the sensor is still in standby after reset.
+    if (!bmp581_set_osr(dev, config->osr_t, config->osr_p, true))
     {
         return false;
     }
 
-    if (!bmp581_set_odr_mode(dev, BMP581_ODR_CODE_100_299_HZ, BMP581_PWR_MODE_NORMAL))
-    {
-        return false;
-    }
-
-    // INT_SOURCE setting (data ready)
+    // Enable data-ready before starting measurements.
     uint8_t int_src = 0x01; // bit0 = drdy_data_reg_en
-    bmp_write_reg(dev, BMP581_REG_INT_SOURCE, &int_src, 1);
+    if (!bmp_write_reg(dev, BMP581_REG_INT_SOURCE, &int_src, 1))
+    {
+        return false;
+    }
+
+    if (!bmp581_set_odr_mode(dev, config->odr_code, config->pwr_mode))
+    {
+        return false;
+    }
+
+    // NORMAL can silently reduce OSR for an invalid OSR/ODR combination.
+    // Refuse that fallback instead of reporting the requested OSR as active.
+    if (config->pwr_mode == BMP581_PWR_MODE_NORMAL)
+    {
+        sleep_ms(5);
+        uint8_t effective = 0;
+        if (!bmp_read_reg(dev, BMP581_REG_OSR_EFF, &effective, 1) ||
+            !(effective & 0x80) ||
+            (effective & 0x07) != config->osr_t ||
+            ((effective >> 3) & 0x07) != config->osr_p)
+        {
+            return false;
+        }
+    }
 
     return true;
 }
@@ -141,16 +174,17 @@ bool bmp581_data_ready(bmp581_t *dev)
 // ---- main ----
 bool bmp581_main(bmp581_t *dev, float *temp_c, float *press_pa)
 {
-    const int max_wait_ms = 100; // max wait 100ms
+    // Allow high pressure AND temperature OSR; x128 is slower than x4.
+    const int max_wait_ms = 250;
     int waited_ms = 0;
     while (!bmp581_data_ready(dev))
     {
-        sleep_ms(10);
-        waited_ms += 10;
         if (waited_ms >= max_wait_ms)
         {
             return false;
         }
+        sleep_ms(1);
+        waited_ms++;
     }
 
     return bmp581_read_temp_press_raw(dev, temp_c, press_pa);

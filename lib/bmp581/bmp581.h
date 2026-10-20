@@ -114,8 +114,18 @@ extern "C" // for C++ compilers
         uint8_t addr;    /* I2C address */
     } bmp581_t;
 
+    typedef struct
+    {
+        uint8_t osr_t;    // BMP581_OSR_T_* register code, not the multiplier
+        uint8_t osr_p;    // BMP581_OSR_P_* register code, not the multiplier
+        uint8_t odr_code; // Used only in NORMAL mode
+        uint8_t pwr_mode; // NORMAL or CONTINUOUS
+    } bmp581_config_t;
+
     // initialization
     bool bmp581_init(bmp581_t *dev);
+    // Apply explicit settings after reset; pass the same config on recovery.
+    bool bmp581_init_with_config(bmp581_t *dev, const bmp581_config_t *config);
 
     // settings
     bool bmp581_set_osr(bmp581_t *dev, uint8_t osr_t, uint8_t osr_p, bool press_en);

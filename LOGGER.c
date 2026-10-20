@@ -46,6 +46,15 @@
 #define PWM_FRAME_SIZE       9U
 
 #define SAMPLE_PERIOD_MS     20U
+
+// x16 pressure / x1 temperature: about 87 Hz typical in continuous mode.
+// For lowest noise, use P_128 / T_8 (about 12 Hz; slows the blocking loop).
+static const bmp581_config_t bmp581_config = {
+    .osr_t = BMP581_OSR_T_1,
+    .osr_p = BMP581_OSR_P_16,
+    .odr_code = BMP581_ODR_CODE_100_299_HZ, // Ignored in CONTINUOUS mode
+    .pwr_mode = BMP581_PWR_MODE_CONTINUOUS,
+};
 #define STATUS_PERIOD_LOOPS  50
 #define LOG_QUEUE_DEPTH      32U
 #define LOG_LINE_SIZE        768U
@@ -447,7 +456,7 @@ int main()
     bmp.i2c = I2C0_PORT;
     bmp.addr = BMP581_I2C_ADDR;
 
-    if (!bmp581_init(&bmp)) {
+    if (!bmp581_init_with_config(&bmp, &bmp581_config)) {
         printf("BMP581 init failed\r\n");
     } else {
         printf("BMP581 init OK\r\n");
@@ -567,7 +576,7 @@ int main()
         bool ok_bmp = bmp581_main(&bmp, &bmp_temp, &bmp_press);
         if (!ok_bmp && loop_started_ms - last_bmp_retry_ms >= SENSOR_RETRY_INTERVAL_MS) {
             last_bmp_retry_ms = loop_started_ms;
-            if (bmp581_init(&bmp)) {
+            if (bmp581_init_with_config(&bmp, &bmp581_config)) {
                 printf("BMP581 recovered\r\n");
             }
         }
